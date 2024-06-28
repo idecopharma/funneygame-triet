@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LUYỆN QUYẾT CHỐT SALES - IDECO</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #1e5799 0%,#2989d8 50%,#207cca 51%,#7db9e8 100%);
+            touch-action: none;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 18px;
+            color: #FFD700;
+            background-color: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        #startMenu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background-color: rgba(0,0,0,0.8);
+            padding: 30px;
+            border-radius: 20px;
+            color: white;
+            box-shadow: 0 0 20px rgba(255,255,255,0.2);
+        }
+        #startButton {
+            font-size: 24px;
+            padding: 15px 30px;
+            background: linear-gradient(to bottom, #4CAF50 0%, #45a049 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        #startButton:hover {
+            background: linear-gradient(to bottom, #45a049 0%, #4CAF50 100%);
+            transform: scale(1.05);
+        }
+        #rules {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            font-size: 14px;
+            color: white;
+            background-color: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 10px;
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="info">Số khách hàng đã chốt: 0 | Thời gian: 45s</div>
+        <div id="startMenu">
+            <h2>Sẵn sàng chốt đơn?</h2>
+            <button id="startButton">Bắt đầu Game</button>
+        </div>
+        <div id="rules">
+            Thể lệ: Chọn đúng banner đỏ "Chốt 1 khách hàng" (+1 điểm), chọn nhầm (-1 điểm)
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const infoElement = document.getElementById('info');
+        const startMenu = document.getElementById('startMenu');
+        const startButton = document.getElementById('startButton');
+
+        let basket = {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 100,
+            color: 'yellow'
+        };
+
+        let banners = [];
+        let particles = [];
+        let score = 0;
+        let timeLeft = 45;
+        let gameStartTime;
+        let isGameRunning = false;
+
+        // Giả lập âm thanh (thay thế bằng file âm thanh thực khi có)
+        const sounds = {
+            background: { play: () => console.log("Playing background music"), pause: () => console.log("Pausing background music") },
+            catch: { play: () => console.log("Playing catch sound") },
+            miss: { play: () => console.log("Playing miss sound") },
+            gameOver: { play: () => console.log("Playing game over sound") }
+        };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            basket.x = canvas.width / 2;
+            basket.y = canvas.height / 2;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function drawBasket() {
+            ctx.fillStyle = basket.color;
+            ctx.beginPath();
+            ctx.moveTo(basket.x, basket.y);
+            ctx.lineTo(basket.x - basket.width / 2, basket.y + basket.height);
+            ctx.lineTo(basket.x + basket.width / 2, basket.y + basket.height);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function drawBanner(banner) {
+            ctx.fillStyle = banner.color;
+            ctx.fillRect(banner.x - banner.width / 2, banner.y, banner.width, banner.height);
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Roboto';
+            ctx.textAlign = 'center';
+            ctx.fillText(banner.text, banner.x, banner.y + banner.height / 2 + 5);
+        }
+
+        function createBanner() {
+            const random = Math.random();
+            const isTarget = random < 0.2;
+            const isRedDecoy = random >= 0.2 && random < 0.4;
+            return {
+                x: Math.random() * canvas.width,
+                y: -40,
+                width: 120,
+                height: 40,
+                color: isTarget || isRedDecoy ? 'red' : `rgb(${Math.random()*255},${Math.random()*255},${Math.random()*255})`,
+                text: isTarget ? "Chốt 1 khách hàng" : "Không phải khách hàng",
+                speed: 1,
+                isTarget: isTarget
+            };
+        }
+
+        function createParticle(x, y) {
+            return {
+                x: x,
+                y: y,
+                size: Math.random() * 5 + 2,
+                color: `hsl(${Math.random() * 360}, 50%, 50%)`,
+                speedX: Math.random() * 6 - 3,
+                speedY: Math.random() * 6 - 3,
+                life: 100
+            };
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.speedX;
+                p.y += p.speedY;
+                p.life--;
+
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                } else {
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        function updateInfo() {
+            infoElement.textContent = `Số khách hàng đã chốt: ${score} | Thời gian: ${timeLeft}s`;
+        }
+
+        function calculateReward() {
+            if (score < 8) return 50000;
+            if (score < 15) return 40000;
+            if (score < 22) return 30000;
+            return 20000;
+        }
+
+        function endGame() {
+            isGameRunning = false;
+            sounds.background.pause();
+            sounds.gameOver.play();
+            const reward = calculateReward();
+            if (score >= 8) {
+                alert(`Chúc mừng! Bạn đã chốt được ${score} khách hàng. KPI bạn đạt và thưởng ${reward}đ`);
+            } else {
+                alert(`Bạn chỉ chốt được ${score} khách hàng. Luyện thêm đi em`);
+            }
+            startMenu.style.display = 'block';
+        }
+
+        function update() {
+            if (!isGameRunning) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawBasket();
+            updateParticles();
+
+            const currentTime = Date.now();
+            const elapsedTime = (currentTime - gameStartTime) / 1000;
+
+            for (let i = banners.length - 1; i >= 0; i--) {
+                let banner = banners[i];
+                banner.speed = 1 + (elapsedTime / 20);
+                banner.y += banner.speed;
+                drawBanner(banner);
+
+                if (banner.y + banner.height > basket.y && 
+                    banner.y < basket.y + basket.height &&
+                    banner.x > basket.x - basket.width / 2 && 
+                    banner.x < basket.x + basket.width / 2) {
+                    banners.splice(i, 1);
+                    if (banner.isTarget) {
+                        score++;
+                        updateInfo();
+                        sounds.catch.play();
+                        for (let j = 0; j < 30; j++) {
+                            particles.push(createParticle(banner.x, banner.y));
+                        }
+                    } else {
+                        score = Math.max(0, score - 1);
+                        updateInfo();
+                        sounds.miss.play();
+                    }
+                } else if (banner.y > canvas.height) {
+                    banners.splice(i, 1);
+                }
+            }
+
+            if (Math.random() < 0.03) {
+                banners.push(createBanner());
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        function handleInput(x, y) {
+            basket.x = x;
+            basket.y = y;
+        }
+
+        function handleTouch(event) {
+            event.preventDefault();
+            const touch = event.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            handleInput(touch.clientX - rect.left, touch.clientY - rect.top);
+        }
+
+        function handleMouse(event) {
+            const rect = canvas.getBoundingClientRect();
+            handleInput(event.clientX - rect.left, event.clientY - rect.top);
+        }
+
+        canvas.addEventListener('touchmove', handleTouch);
+        canvas.addEventListener('touchstart', handleTouch);
+        canvas.addEventListener('mousemove', handleMouse);
+
+        function countdown() {
+            if (!isGameRunning) return;
+            timeLeft--;
+            updateInfo();
+            if (timeLeft <= 0) {
+                endGame();
+            } else {
+                setTimeout(countdown, 1000);
+            }
+        }
+
+        function startGame() {
+            isGameRunning = true;
+            score = 0;
+            timeLeft = 45;
+            banners = [];
+            particles = [];
+            gameStartTime = Date.now();
+            startMenu.style.display = 'none';
+            sounds.background.play();
+            update();
+            countdown();
+        }
+
+        startButton.addEventListener('click', startGame);
+        startButton.addEventListener('touchstart', startGame);
+    </script>
+</body>
+</html>
